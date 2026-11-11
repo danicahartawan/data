@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   audienceSegments, campaigns, channelRows, competitors, dashboardTabs,
   buildCodexPrompt, buildMessageDraft, genieRewrite, getMentionTotal, getShareOfVoice, marketTopics, mentionSeries, productRows,
@@ -21,6 +21,8 @@ const Icon = ({ name, size = 18 }: { name: string; size?: number }) => {
     check: <><path d="m5 12 5 5 9-10"/></>,
     close: <><path d="M6 6l12 12M18 6 6 18"/></>,
     sparkle: <><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16v4m-2-2h4"/></>,
+    mic: <><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></>,
+    mail: <><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></>,
     send: <><path d="M5 12h14m-6-6 6 6-6 6"/></>,
     refresh: <><path d="M20 12a8 8 0 1 1-2.5-5.8M20 4v5h-5"/></>,
     search: <><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></>,
@@ -86,7 +88,7 @@ function ProductsDashboard({ active, toggle, commentTarget, comments, onComment 
     <section className={`section-block commentable-panel ${commentTarget?.panel==='mentions'?'comment-selected':''}`} onContextMenu={onComment}>
       <div className="section-head"><div><h2>Mentions over time</h2><p>Weekly product and brand mentions across tracked channels</p></div><div className="legend">{competitors.map(c => <span key={c.id}><i style={{background:c.color}}/>{c.name}</span>)}</div></div>
       <TrendChart active={active}/>
-      {comments.map(comment=><button className="comment-pin" data-point={comment.point} key={comment.id} style={{left:comment.anchorX,top:comment.anchorY}} title={comment.text} aria-label={`Comment: ${comment.text}`}>{comment.id}</button>)}
+      {comments.map(comment=><button className="comment-pin t-resize" data-point={comment.point} key={comment.id} style={{left:comment.anchorX,top:comment.anchorY}} title={comment.text} aria-label={`Comment: ${comment.text}`}>{comment.id}</button>)}
     </section>
     <section className="split-grid">
       <div className="section-block compact"><div className="section-head"><div><h2>Conversation by channel</h2><p>Where each competitor is being discussed</p></div></div>{channelRows.map(row => { const max = Math.max(...channelRows.flatMap(r => [r.databricks, r.snowflake])); return <div className="channel-row" key={row.name}><strong>{row.name}</strong><div><span className="bar red" style={{width:`${row.databricks/max*100}%`}}/><small>{row.databricks.toLocaleString()}</small></div><div><span className="bar blue" style={{width:`${row.snowflake/max*100}%`}}/><small>{row.snowflake.toLocaleString()}</small></div></div>})}</div>
@@ -116,23 +118,60 @@ export default function DashboardApp() {
   const [agentToast, setAgentToast] = useState(false);
   const [voiceStage, setVoiceStage] = useState<'idle'|'recording'|'generating'|'email'>('idle');
   const [voiceTranscript, setVoiceTranscript] = useState('');
-  const [msg, setMsg] = useState<{ stage: 'generating' | 'ready'; point: number | null } | null>(null);
+  const [msg, setMsg] = useState<{ stage: 'listening' | 'generating' | 'ready'; point: number | null } | null>(null);
+  const [voiceText, setVoiceText] = useState('');
+  const recognitionRef = useRef<any>(null);
+  const voiceTimer = useRef<number>(0);
+  const transcriptRef = useRef('');
+  const pointRef = useRef<number | null>(null);
+  const [msgTo, setMsgTo] = useState('');
   const [msgSubject, setMsgSubject] = useState('');
   const [msgBody, setMsgBody] = useState('');
   const [msgCopied, setMsgCopied] = useState(false);
   const [genieBusy, setGenieBusy] = useState(false);
   const [genieText, setGenieText] = useState('');
   const toggle = (id: CompanyId) => setActive(current => current.includes(id) ? (current.length === 1 ? current : current.filter(item => item !== id)) : [...current, id]);
+  const stopListening = () => {
+    window.clearTimeout(voiceTimer.current);
+    try { recognitionRef.current?.stop(); } catch { /* already stopped */ }
+    recognitionRef.current = null;
+  };
+  const finishVoice = (skip = false) => {
+    stopListening();
+    if (skip) transcriptRef.current = '';
+    setMsg(current => current ? { ...current, stage: 'generating' } : current);
+    window.setTimeout(() => {
+      const draft = buildMessageDraft(active, pointRef.current, transcriptRef.current);
+      setMsgSubject(draft.subject);
+      setMsgBody(draft.body);
+      setMsg(current => current ? { ...current, stage: 'ready' } : current);
+    }, 1200);
+  };
   const openMessage = (point: number | null) => {
     window.getSelection()?.removeAllRanges();
-    const draft = buildMessageDraft(active, point);
-    setMsgSubject(draft.subject);
-    setMsgBody(draft.body);
+    stopListening();
+    pointRef.current = point;
+    transcriptRef.current = '';
+    setVoiceText('');
     setMsgCopied(false);
     setGenieText('');
-    setMsg({ stage: 'generating', point });
-    window.setTimeout(() => setMsg(current => current && { ...current, stage: 'ready' }), 1100);
+    setMsg({ stage: 'listening', point });
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (SR) {
+      const recognition = new SR();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.onresult = (e: any) => {
+        const text = Array.from(e.results).map((r: any) => r[0].transcript).join(' ').trim();
+        transcriptRef.current = text;
+        setVoiceText(text);
+      };
+      recognition.onerror = () => {};
+      try { recognition.start(); recognitionRef.current = recognition; } catch { /* mic busy */ }
+    }
+    voiceTimer.current = window.setTimeout(() => finishVoice(), 12000);
   };
+  const closeMessage = () => { stopListening(); setMsg(null); };
   const onDoubleClickMain = (event: React.MouseEvent<HTMLElement>) => {
     const target = event.target as HTMLElement;
     const pin = target.closest('.comment-pin') as HTMLElement | null;
@@ -145,13 +184,17 @@ export default function DashboardApp() {
     setGenieBusy(true);
     window.setTimeout(() => { setMsgBody(body => genieRewrite(body, action, text)); setGenieBusy(false); setGenieText(''); }, 700);
   };
+  const sendEmail = () => {
+    const url = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(msgTo)}&su=${encodeURIComponent(msgSubject)}&body=${encodeURIComponent(msgBody)}`;
+    window.open(url, '_blank', 'noopener');
+  };
   const copyMessage = async () => {
     await navigator.clipboard.writeText(`*${msgSubject}*\n\n${msgBody}`);
     setMsgCopied(true);
     window.setTimeout(() => setMsgCopied(false), 1800);
   };
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMsg(null); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') closeMessage(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
@@ -191,14 +234,14 @@ export default function DashboardApp() {
     },3200);
   };
   const views: Record<TabId, React.ReactNode> = { products:<ProductsDashboard active={active} toggle={toggle} commentTarget={commentTarget} comments={comments} onComment={openComment}/>, market:<MarketDashboard/>, audience:<AudienceDashboard/>, campaigns:<CampaignsDashboard/>, reports:<ReportsDashboard/> };
-  return <div className="app-shell">
+  return <div className={`app-shell${msg ? ' panel-open' : ''}`}>
     <header className="topbar">
       <div className="brand-zone"><button className="sidebar-toggle" aria-label="Toggle sidebar"><span/><span/></button><a className="brand" href="#" onClick={e=>e.preventDefault()}><svg className="db-logo" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 20 7.5v9L12 21 4 16.5v-9z"/></svg><strong>databricks</strong></a></div>
       <nav className="workspace-tabs">{dashboardTabs.map(item => <button className={tab===item.id?'active':''} key={item.id} onClick={()=>setTab(item.id as TabId)}><Icon name={item.id}/><span>{item.label}</span>{tab===item.id&&<i aria-hidden="true">×</i>}</button>)}<button className="new-tab" aria-label="Add dashboard">+</button></nav>
       <div className="header-actions"><button aria-label="Search"><Icon name="search"/></button><button className="agent-command" onClick={runAgentCommand}><Icon name="codex" size={15}/> Agent <kbd>⌘/</kbd></button><button className="invite">Share dashboard</button><div className="avatar">DH</div></div>
     </header>
     <main onDoubleClick={onDoubleClickMain}>{views[tab]}</main><footer>Demo data · Double-click a comment pin (or anywhere) to draft a message</footer>
-    {commentTarget&&voiceStage==='idle'&&<div className="comment-composer" style={{left:commentTarget.x,top:commentTarget.y}}><span className="comment-sliders">☷</span><input autoFocus value={commentText} onChange={e=>setCommentText(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')addComment();if(e.key==='Escape')setCommentTarget(null)}} placeholder="Add a comment..." aria-label="Add a comment"/><button className="comment-mic" aria-label="Voice comment" onClick={startVoiceEmail}>⌾</button><button className="comment-submit" aria-label="Save comment" onClick={addComment}>✓</button></div>}
+    {commentTarget&&voiceStage==='idle'&&<div className="comment-composer t-resize" style={{left:commentTarget.x,top:commentTarget.y}}><span className="comment-sliders">☷</span><input autoFocus value={commentText} onChange={e=>setCommentText(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')addComment();if(e.key==='Escape')setCommentTarget(null)}} placeholder="Add a comment..." aria-label="Add a comment"/><button className="comment-mic" aria-label="Voice comment" onClick={startVoiceEmail}>⌾</button><button className="comment-submit" aria-label="Save comment" onClick={addComment}>✓</button></div>}
     {voiceStage!=='idle'&&commentTarget&&<div className={`voice-workspace comment-voice-workspace ${voiceStage==='email'?'email-side-workspace':''}`} style={{left:commentTarget.x,top:commentTarget.y}} role="dialog" aria-label="Voice to email">
       {(voiceStage==='recording'||voiceStage==='generating')&&<div className={`voice-capture ${voiceStage}`}>
         <div className="voice-orb"><i/><i/><i/><i/><i/></div>
@@ -217,13 +260,21 @@ export default function DashboardApp() {
       </article>}
     </div>}
     {msg&&<aside className="slack-panel msg-panel" role="dialog" aria-label="New message">
-      <div className="slack-head"><div className="slack-badge"><Icon name="slack" size={16}/></div><div><h2>New message</h2><p>{msg.stage==='ready'?(msg.point===null?'Drafted from this dashboard':`Drafted from the ${mentionSeries[msg.point].label} point`):'Reading the dashboard…'}</p></div><button aria-label="Close message" onClick={()=>setMsg(null)}><Icon name="close" size={16}/></button></div>
-      {msg.stage==='generating'?<div className="slack-skeleton"><span/><span/><span/><span/></div>:<>
-        <div className="msg-subject"><label htmlFor="msg-subject">Subject</label><input id="msg-subject" value={msgSubject} onChange={e=>setMsgSubject(e.target.value)}/></div>
+      <div className="slack-head"><div className="slack-badge"><Icon name={msg.stage==='ready'?'mail':'mic'} size={16}/></div><div><h2>{msg.stage==='ready'?'New message':'Voice message'}</h2><p>{msg.stage==='listening'?'Listening…':msg.stage==='generating'?'Writing subject and message':(msg.point===null?'Drafted from this dashboard':`Drafted from the ${mentionSeries[msg.point].label} point`)}</p></div><button aria-label="Close message" onClick={closeMessage}><Icon name="close" size={16}/></button></div>
+      {msg.stage!=='ready'?<div className={`msg-voice ${msg.stage}`}>
+        <div className="voice-orb"><i/><i/><i/><i/><i/></div>
+        <h3>{msg.stage==='listening'?'Talk naturally':'Generating message…'}</h3>
+        <p>{msg.stage==='listening'?(voiceText||'Tell me what the message should say. I’ll turn it into a draft with the chart attached.'):'Turning your voice note into a clear, ready-to-send draft.'}</p>
+        {msg.stage==='listening'&&<div className="msg-voice-actions"><button className="ghost" onClick={()=>finishVoice(true)}>Skip voice</button><button className="primary" onClick={()=>finishVoice()}>Done</button></div>}
+      </div>:<>
+        <div className="msg-fields">
+          <div className="msg-field"><label htmlFor="msg-to">Email address</label><input id="msg-to" type="email" value={msgTo} placeholder="name@company.com" onChange={e=>setMsgTo(e.target.value)}/></div>
+          <div className="msg-field"><label htmlFor="msg-subject">Subject</label><input id="msg-subject" value={msgSubject} onChange={e=>setMsgSubject(e.target.value)}/></div>
+        </div>
         <div className="msg-grid">
           <div className="msg-main">
             <div className="msg-attach"><MiniChart point={msg.point}/><div><strong>Mentions over time</strong><span>{msg.point===null?'Sep 1 – Oct 20':`Pinned at ${mentionSeries[msg.point].label}`} · chart attached</span></div></div>
-            <textarea className="msg-body" value={msgBody} onChange={e=>setMsgBody(e.target.value)} aria-label="Message body" spellCheck={false}/>
+            <div className="msg-field msg-field-body"><label htmlFor="msg-body">Email text and signature</label><textarea id="msg-body" className="msg-body" value={msgBody} onChange={e=>setMsgBody(e.target.value)} spellCheck={false} wrap="soft"/></div>
           </div>
           <div className="genie">
             <div className="genie-head"><Icon name="sparkle" size={15}/> Genie</div>
@@ -233,10 +284,10 @@ export default function DashboardApp() {
               <button onClick={()=>askGenie('friendly')}>Friendlier tone</button>
               <button onClick={()=>askGenie('next')}>Add next steps</button>
             </div>
-            <div className="genie-input"><input value={genieText} placeholder="Tell Genie what to add…" onChange={e=>setGenieText(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')askGenie('custom',genieText)}} aria-label="Ask Genie"/><button aria-label="Send to Genie" onClick={()=>askGenie('custom',genieText)}><Icon name="send" size={14}/></button></div>
+            <div className="genie-input"><input value={genieText} placeholder="Tell Genie…" onChange={e=>setGenieText(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')askGenie('custom',genieText)}} aria-label="Ask Genie"/><button aria-label="Send to Genie" onClick={()=>askGenie('custom',genieText)}><Icon name="send" size={14}/></button></div>
           </div>
         </div>
-        <div className="slack-actions"><button className="ghost" onClick={()=>openMessage(msg.point)}><Icon name="refresh" size={14}/> Regenerate</button><button className="primary" onClick={copyMessage}><Icon name={msgCopied?'check':'copy'} size={14}/> {msgCopied?'Copied':'Copy message'}</button></div>
+        <div className="slack-actions msg-footer"><button className="primary send-email" onClick={sendEmail}><Icon name="mail" size={15}/> Send Email</button><div><button className="ghost" onClick={()=>openMessage(msg.point)}><Icon name="mic" size={14}/> Re-record</button><button className="ghost" onClick={copyMessage}><Icon name={msgCopied?'check':'copy'} size={14}/> {msgCopied?'Copied':'Copy'}</button></div></div>
       </>}
     </aside>}
     {agentToast&&<div className="agent-toast" role="status">Codex command copied</div>}

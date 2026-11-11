@@ -106,11 +106,12 @@ export const slackMessageToMrkdwn = (message) => [
   message.cta,
 ].join('\n');
 
-export const buildMessageDraft = (activeCompanyIds, pointIndex = null) => {
+export const buildMessageDraft = (activeCompanyIds, pointIndex = null, note = '') => {
   const base = buildSlackMessage(activeCompanyIds);
   const point = pointIndex === null ? null : mentionSeries[pointIndex];
+  const spoken = note.trim();
   const lines = [
-    base.intro,
+    ...(spoken ? [`${spoken.charAt(0).toUpperCase()}${spoken.slice(1)}`] : [base.intro]),
     '',
     ...(point ? [`At ${point.label}: Databricks ${point.databricks.toLocaleString()} vs Snowflake ${point.snowflake.toLocaleString()} mentions`, ''] : []),
     ...base.lines.map(line => `• ${line.label}: ${line.value} (${line.note})`),

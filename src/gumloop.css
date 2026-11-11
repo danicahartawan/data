@@ -159,3 +159,105 @@ footer{grid-column:2;grid-row:2;border-top:1px solid var(--line);padding:16px 24
 .genie-input input{flex:1;min-width:0;border:0;outline:0;background:transparent;font:inherit;font-size:12px}
 .genie-input button{display:grid;place-items:center;width:26px;height:26px;border:0;border-radius:6px;background:var(--ink);color:#fff;cursor:pointer}
 @media(max-width:700px){.msg-grid{grid-template-columns:1fr}.genie{border-left:0;border-top:1px solid var(--line)}}
+
+/* Email-style fields: small muted labels over values, inside a soft card */
+.msg-fields{margin:12px 16px 0;border:1px solid var(--line);border-radius:10px;background:#fafafa}
+.msg-field{display:flex;flex-direction:column;gap:3px;padding:10px 14px}
+.msg-fields .msg-field+.msg-field{border-top:1px solid var(--line)}
+.msg-field label{color:#a3a3a3;font-size:11px;font-weight:500}
+.msg-field input{border:0;outline:0;background:transparent;font:inherit;font-size:14px;color:var(--ink);padding:0}
+.msg-field input::placeholder{color:#a3a3a3}
+.msg-field-body{flex:1;border:1px solid var(--line);border-radius:10px;background:#fafafa}
+.msg-field-body .msg-body{min-height:230px;padding:0;margin-top:2px}
+.msg-main{padding-top:12px}
+.msg-footer{justify-content:flex-start;align-items:center}
+.msg-footer>div{display:flex;gap:8px;margin-left:auto}
+.msg-status{color:var(--muted);font-size:12px;margin-left:6px}
+.send-email{padding:8px 14px!important}
+
+/* Docked side panel (voice first, then email draft) */
+.msg-panel{top:0;right:0;bottom:0;width:min(540px,100vw);max-height:none;display:flex;flex-direction:column;border-width:0 0 0 1px;border-radius:0;box-shadow:-8px 0 30px rgba(0,0,0,.06)}
+.msg-panel .slack-actions{margin-top:auto;position:sticky;bottom:0;border-radius:0}
+.app-shell.panel-open{padding-right:540px}
+.msg-grid{grid-template-columns:minmax(0,1fr) 170px}
+.msg-attach>div{min-width:0}.msg-attach span{display:block;overflow-wrap:anywhere}
+.msg-body{width:100%;white-space:pre-wrap;overflow-wrap:anywhere;word-break:normal}
+.genie{padding:12px}
+.msg-voice{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:32px 28px;text-align:center}
+.msg-voice .voice-orb{width:84px;height:84px}
+.msg-voice .voice-orb i{height:19px}.msg-voice .voice-orb i:nth-child(2),.msg-voice .voice-orb i:nth-child(4){height:32px}.msg-voice .voice-orb i:nth-child(3){height:44px}
+.msg-voice h3{margin:10px 0 0;font-size:20px;font-weight:600;letter-spacing:-.01em}
+.msg-voice p{max-width:340px;min-height:44px;margin:0;color:var(--muted);font-size:14px;line-height:1.55;overflow-wrap:anywhere}
+.msg-voice-actions{display:flex;gap:8px;margin-top:8px}
+.msg-voice-actions button{border-radius:8px;padding:8px 14px;font-size:13px;font-weight:500;cursor:pointer}
+.msg-voice-actions .ghost{border:1px solid var(--line);background:#fff;color:var(--ink)}
+.msg-voice-actions .primary{border:1px solid var(--ink);background:var(--ink);color:#fff}
+@media(max-width:1100px){.app-shell.panel-open{padding-right:0}.msg-panel{box-shadow:-12px 0 40px rgba(0,0,0,.14)}}
+@media(max-width:700px){.msg-grid{grid-template-columns:1fr}}
+.msg-grid{flex:1;min-height:0}
+.msg-field-body .msg-body{flex:1;resize:none}
+
+/* Compact side panel */
+.msg-panel{width:min(380px,100vw)}
+.app-shell.panel-open{padding-right:380px}
+.msg-panel .slack-head{padding:10px 14px}
+.msg-panel .slack-head h2{font-size:13px}.msg-panel .slack-head p{font-size:11px}
+.msg-fields{margin:10px 12px 0}
+.msg-field{padding:8px 12px}
+.msg-field input{font-size:13px}
+.msg-grid{grid-template-columns:1fr;display:flex;flex-direction:column}
+.msg-main{padding:10px 12px;gap:8px;flex:1;min-height:0}
+.msg-attach{padding:6px}.mini-chart{width:72px;height:32px}.msg-attach strong{font-size:12px}.msg-attach span{font-size:11px}
+.msg-field-body .msg-body{min-height:150px;font-size:13px;line-height:1.5}
+.genie{flex-direction:column;gap:8px;padding:10px 12px;border-left:0;border-top:1px solid var(--line)}
+.genie p{display:none}
+.genie-chips{flex-direction:row;flex-wrap:wrap}
+.genie-chips button{padding:5px 9px;font-size:11px}
+.genie-input{margin-top:0}
+.msg-panel .slack-actions{padding:10px 12px}
+.msg-panel .slack-actions button{padding:6px 10px;font-size:12px}
+.msg-voice{padding:24px 20px}
+.msg-voice .voice-orb{width:64px;height:64px}.msg-voice .voice-orb i{height:14px}.msg-voice .voice-orb i:nth-child(2),.msg-voice .voice-orb i:nth-child(4){height:24px}.msg-voice .voice-orb i:nth-child(3){height:34px}
+.msg-voice h3{font-size:16px;margin-top:6px}.msg-voice p{font-size:13px;min-height:36px}
+@media(max-width:1000px){.app-shell.panel-open{padding-right:0}}
+
+/* Transitions.dev - Card resize (https://transitions.dev/detail.html?t=card-resize) */
+:root{--resize-dur:300ms;--resize-ease:cubic-bezier(0.22, 1, 0.36, 1)}
+.t-resize{transition:width var(--resize-dur) var(--resize-ease),height var(--resize-dur) var(--resize-ease);will-change:width,height}
+@media (prefers-reduced-motion: reduce){.t-resize{transition:none!important}}
+
+/* Comment bubbles, sized to match the Gumloop UI */
+.comment-pin{width:24px;height:24px;border:2px solid #fff;background:var(--ink);color:#fff;font-size:11px;font-weight:600;box-shadow:0 1px 4px rgba(0,0,0,.22);cursor:pointer}
+.comment-pin:hover,.comment-pin:focus-visible{width:30px;height:30px}
+.comment-selected{outline:2px solid var(--blue);outline-offset:-2px;border-radius:8px;background:#fff}
+.comment-composer{width:min(440px,calc(100vw - 40px));height:44px;grid-template-columns:26px 1fr 30px 34px;padding:0 6px 0 12px;border-radius:22px;background:var(--ink);overflow:hidden;box-shadow:0 8px 24px rgba(0,0,0,.18);animation:bubble-open var(--resize-dur) var(--resize-ease)}
+.comment-composer input{padding:2px 10px;border-left-color:#525252;font-size:14px}
+.comment-composer input::placeholder{color:#8a8a8a}
+.comment-sliders{font-size:15px}.comment-mic{font-size:17px}
+.comment-submit{width:32px;height:32px;font-size:15px;background:#fff!important;color:var(--ink)!important}
+@keyframes bubble-open{from{width:44px}}
+@media (prefers-reduced-motion: reduce){.comment-composer{animation:none}}
+
+/* Floating rounded card at the side (per sketch): Genie column inside, no docked sidebar */
+.app-shell.panel-open{padding-right:0}
+.msg-panel{top:16px;right:16px;bottom:auto;width:min(520px,calc(100vw - 32px));max-height:calc(100vh - 32px);overflow:auto;border:1px solid #e5e5e5;border-radius:18px;background:#f5f5f5;box-shadow:0 18px 50px rgba(0,0,0,.14)}
+.msg-panel .slack-head{border-bottom:0;padding:14px 16px 8px}
+.msg-panel .slack-head>button:hover{background:#e8e8e8}
+.msg-fields{margin:4px 14px 0;border-radius:12px;background:#fff}
+.msg-fields .msg-field+.msg-field{border-top:1px solid #efefef}
+.msg-field{background:transparent}
+.msg-grid{display:grid;grid-template-columns:minmax(0,1fr) 150px;gap:0;flex:none}
+.msg-main{padding:10px 8px 12px 14px}
+.msg-attach{border-radius:12px;background:#fff}
+.msg-field-body{border-radius:12px;background:#fff;border-color:var(--line)}
+.msg-field-body .msg-body{min-height:190px}
+.genie{padding:12px 14px 12px 10px;border-top:0;border-left:1px solid #e3e3e3;background:transparent}
+.genie p{display:block}
+.genie-chips{flex-direction:column;flex-wrap:nowrap}
+.genie-chips button{border-radius:10px;background:#fff}
+.genie-input{margin-top:auto;border-radius:10px}
+.msg-panel .slack-actions{position:static;border-top:1px solid #e3e3e3;background:#f5f5f5;border-radius:0 0 18px 18px;padding:10px 14px}
+.msg-panel .send-email{border-radius:10px}
+.msg-panel .slack-actions .ghost{border-radius:10px}
+.msg-voice{min-height:300px}
+@media(max-width:560px){.msg-grid{grid-template-columns:1fr}.genie{border-left:0;border-top:1px solid #e3e3e3}}
