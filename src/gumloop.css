@@ -261,3 +261,6 @@ footer{grid-column:2;grid-row:2;border-top:1px solid var(--line);padding:16px 24
 .msg-panel .slack-actions .ghost{border-radius:10px}
 .msg-voice{min-height:300px}
 @media(max-width:560px){.msg-grid{grid-template-columns:1fr}.genie{border-left:0;border-top:1px solid #e3e3e3}}
+
+/* Message card anchored bottom-right */
+.msg-panel{top:auto;bottom:16px;right:16px}
