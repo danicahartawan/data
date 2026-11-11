@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   audienceSegments, campaigns, channelRows, competitors, dashboardTabs,
-  buildCodexPrompt, buildSlackMessage, slackMessageToMrkdwn, getMentionTotal, getShareOfVoice, marketTopics, mentionSeries, productRows,
+  buildCodexPrompt, buildMessageDraft, genieRewrite, getMentionTotal, getShareOfVoice, marketTopics, mentionSeries, productRows,
 } from './dashboardData.js';
 
 type CompanyId = 'databricks' | 'snowflake';
 type TabId = 'products' | 'market' | 'audience' | 'campaigns' | 'reports';
-type CommentTarget = { panel: 'mentions'; x: number; y: number; anchorX: number; anchorY: number };
-type DashboardComment = { id: number; text: string; anchorX: number; anchorY: number };
+type CommentTarget = { panel: 'mentions'; x: number; y: number; anchorX: number; anchorY: number; panelW: number };
+type DashboardComment = { id: number; text: string; anchorX: number; anchorY: number; point: number };
 
 const Icon = ({ name, size = 18 }: { name: string; size?: number }) => {
   const paths: Record<string, React.ReactNode> = {
@@ -20,6 +20,8 @@ const Icon = ({ name, size = 18 }: { name: string; size?: number }) => {
     copy: <><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h8"/></>,
     check: <><path d="m5 12 5 5 9-10"/></>,
     close: <><path d="M6 6l12 12M18 6 6 18"/></>,
+    sparkle: <><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16v4m-2-2h4"/></>,
+    send: <><path d="M5 12h14m-6-6 6 6-6 6"/></>,
     refresh: <><path d="M20 12a8 8 0 1 1-2.5-5.8M20 4v5h-5"/></>,
     search: <><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></>,
     download: <><path d="M12 3v12m-5-5 5 5 5-5M4 21h16"/></>,
@@ -48,6 +50,19 @@ function TrendChart({ active }: { active: CompanyId[] }) {
   </div>;
 }
 
+function MiniChart({ point }: { point: number | null }) {
+  const w = 200, h = 80, pad = 8, min = 500, max = 1500;
+  const x = (i: number) => pad + i * ((w - 2 * pad) / (mentionSeries.length - 1));
+  const y = (v: number) => h - pad - ((v - min) / (max - min)) * (h - 2 * pad);
+  const hi = point ?? mentionSeries.length - 1;
+  return <svg className="mini-chart" viewBox={`0 0 ${w} ${h}`} aria-hidden="true">
+    {competitors.map(c => <g key={c.id}>
+      <path d={mentionSeries.map((q, i) => `${i ? 'L' : 'M'} ${x(i)} ${y(q[c.id])}`).join(' ')} fill="none" stroke={c.color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+      <circle cx={x(hi)} cy={y(mentionSeries[hi][c.id])} r="3" fill="#fff" stroke={c.color} strokeWidth="1.5"/>
+    </g>)}
+  </svg>;
+}
+
 const Delta = ({ value }: { value: number }) => <span className={value >= 0 ? 'delta up' : 'delta down'}>{value >= 0 ? '↗' : '↘'} {Math.abs(value)}%</span>;
 
 function ProductsDashboard({ active, toggle, commentTarget, comments, onComment }: { active: CompanyId[]; toggle: (id: CompanyId) => void; commentTarget: CommentTarget | null; comments: DashboardComment[]; onComment: (event: React.MouseEvent<HTMLElement>) => void }) {
@@ -71,7 +86,7 @@ function ProductsDashboard({ active, toggle, commentTarget, comments, onComment 
     <section className={`section-block commentable-panel ${commentTarget?.panel==='mentions'?'comment-selected':''}`} onContextMenu={onComment}>
       <div className="section-head"><div><h2>Mentions over time</h2><p>Weekly product and brand mentions across tracked channels</p></div><div className="legend">{competitors.map(c => <span key={c.id}><i style={{background:c.color}}/>{c.name}</span>)}</div></div>
       <TrendChart active={active}/>
-      {comments.map(comment=><button className="comment-pin" key={comment.id} style={{left:comment.anchorX,top:comment.anchorY}} title={comment.text} aria-label={`Comment: ${comment.text}`}>{comment.id}</button>)}
+      {comments.map(comment=><button className="comment-pin" data-point={comment.point} key={comment.id} style={{left:comment.anchorX,top:comment.anchorY}} title={comment.text} aria-label={`Comment: ${comment.text}`}>{comment.id}</button>)}
     </section>
     <section className="split-grid">
       <div className="section-block compact"><div className="section-head"><div><h2>Conversation by channel</h2><p>Where each competitor is being discussed</p></div></div>{channelRows.map(row => { const max = Math.max(...channelRows.flatMap(r => [r.databricks, r.snowflake])); return <div className="channel-row" key={row.name}><strong>{row.name}</strong><div><span className="bar red" style={{width:`${row.databricks/max*100}%`}}/><small>{row.databricks.toLocaleString()}</small></div><div><span className="bar blue" style={{width:`${row.snowflake/max*100}%`}}/><small>{row.snowflake.toLocaleString()}</small></div></div>})}</div>
@@ -101,27 +116,42 @@ export default function DashboardApp() {
   const [agentToast, setAgentToast] = useState(false);
   const [voiceStage, setVoiceStage] = useState<'idle'|'recording'|'generating'|'email'>('idle');
   const [voiceTranscript, setVoiceTranscript] = useState('');
-  const [slackStage, setSlackStage] = useState<'idle'|'generating'|'ready'>('idle');
-  const [slackCopied, setSlackCopied] = useState(false);
+  const [msg, setMsg] = useState<{ stage: 'generating' | 'ready'; point: number | null } | null>(null);
+  const [msgSubject, setMsgSubject] = useState('');
+  const [msgBody, setMsgBody] = useState('');
+  const [msgCopied, setMsgCopied] = useState(false);
+  const [genieBusy, setGenieBusy] = useState(false);
+  const [genieText, setGenieText] = useState('');
   const toggle = (id: CompanyId) => setActive(current => current.includes(id) ? (current.length === 1 ? current : current.filter(item => item !== id)) : [...current, id]);
-  const slack = buildSlackMessage(active);
-  const draftSlack = () => {
+  const openMessage = (point: number | null) => {
     window.getSelection()?.removeAllRanges();
-    setSlackCopied(false);
-    setSlackStage('generating');
-    window.setTimeout(() => setSlackStage('ready'), 1100);
+    const draft = buildMessageDraft(active, point);
+    setMsgSubject(draft.subject);
+    setMsgBody(draft.body);
+    setMsgCopied(false);
+    setGenieText('');
+    setMsg({ stage: 'generating', point });
+    window.setTimeout(() => setMsg(current => current && { ...current, stage: 'ready' }), 1100);
   };
-  const generateSlack = (event: React.MouseEvent<HTMLElement>) => {
-    if ((event.target as HTMLElement).closest('button,input,a')) return;
-    draftSlack();
+  const onDoubleClickMain = (event: React.MouseEvent<HTMLElement>) => {
+    const target = event.target as HTMLElement;
+    const pin = target.closest('.comment-pin') as HTMLElement | null;
+    if (pin) { openMessage(Number(pin.dataset.point)); return; }
+    if (target.closest('button,input,a')) return;
+    openMessage(null);
   };
-  const copySlack = async () => {
-    await navigator.clipboard.writeText(slackMessageToMrkdwn(slack));
-    setSlackCopied(true);
-    window.setTimeout(() => setSlackCopied(false), 1800);
+  const askGenie = (action: 'shorter' | 'next' | 'friendly' | 'custom', text = '') => {
+    if (genieBusy || (action === 'custom' && !text.trim())) return;
+    setGenieBusy(true);
+    window.setTimeout(() => { setMsgBody(body => genieRewrite(body, action, text)); setGenieBusy(false); setGenieText(''); }, 700);
+  };
+  const copyMessage = async () => {
+    await navigator.clipboard.writeText(`*${msgSubject}*\n\n${msgBody}`);
+    setMsgCopied(true);
+    window.setTimeout(() => setMsgCopied(false), 1800);
   };
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setSlackStage('idle'); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMsg(null); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
@@ -133,12 +163,12 @@ export default function DashboardApp() {
   const openComment = (event: React.MouseEvent<HTMLElement>) => {
     event.preventDefault();
     const rect=event.currentTarget.getBoundingClientRect();
-    setCommentTarget({panel:'mentions',x:Math.max(20,Math.min(window.innerWidth-610,event.clientX-290)),y:Math.max(60,Math.min(window.innerHeight-90,event.clientY+24)),anchorX:event.clientX-rect.left,anchorY:event.clientY-rect.top});
+    setCommentTarget({panel:'mentions',x:Math.max(20,Math.min(window.innerWidth-610,event.clientX-290)),y:Math.max(60,Math.min(window.innerHeight-90,event.clientY+24)),anchorX:event.clientX-rect.left,anchorY:event.clientY-rect.top,panelW:rect.width});
     setCommentText('');
   };
   const addComment = () => {
     if(!commentTarget||!commentText.trim()) return;
-    setComments(current=>[...current,{id:current.length+1,text:commentText.trim(),anchorX:commentTarget.anchorX,anchorY:commentTarget.anchorY}]);
+    setComments(current=>[...current,{id:current.length+1,text:commentText.trim(),anchorX:commentTarget.anchorX,anchorY:commentTarget.anchorY,point:Math.max(0,Math.min(mentionSeries.length-1,Math.round(((commentTarget.anchorX/commentTarget.panelW)*1000-56)/((972-56)/(mentionSeries.length-1)))))}]);
     setCommentTarget(null);setCommentText('');
   };
   const startVoiceEmail = () => {
@@ -167,7 +197,7 @@ export default function DashboardApp() {
       <nav className="workspace-tabs">{dashboardTabs.map(item => <button className={tab===item.id?'active':''} key={item.id} onClick={()=>setTab(item.id as TabId)}><Icon name={item.id}/><span>{item.label}</span>{tab===item.id&&<i aria-hidden="true">×</i>}</button>)}<button className="new-tab" aria-label="Add dashboard">+</button></nav>
       <div className="header-actions"><button aria-label="Search"><Icon name="search"/></button><button className="agent-command" onClick={runAgentCommand}><Icon name="codex" size={15}/> Agent <kbd>⌘/</kbd></button><button className="invite">Share dashboard</button><div className="avatar">DH</div></div>
     </header>
-    <main onDoubleClick={generateSlack}>{views[tab]}</main><footer>Demo data · Double-click anywhere on the dashboard to draft a Slack update</footer>
+    <main onDoubleClick={onDoubleClickMain}>{views[tab]}</main><footer>Demo data · Double-click a comment pin (or anywhere) to draft a message</footer>
     {commentTarget&&voiceStage==='idle'&&<div className="comment-composer" style={{left:commentTarget.x,top:commentTarget.y}}><span className="comment-sliders">☷</span><input autoFocus value={commentText} onChange={e=>setCommentText(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')addComment();if(e.key==='Escape')setCommentTarget(null)}} placeholder="Add a comment..." aria-label="Add a comment"/><button className="comment-mic" aria-label="Voice comment" onClick={startVoiceEmail}>⌾</button><button className="comment-submit" aria-label="Save comment" onClick={addComment}>✓</button></div>}
     {voiceStage!=='idle'&&commentTarget&&<div className={`voice-workspace comment-voice-workspace ${voiceStage==='email'?'email-side-workspace':''}`} style={{left:commentTarget.x,top:commentTarget.y}} role="dialog" aria-label="Voice to email">
       {(voiceStage==='recording'||voiceStage==='generating')&&<div className={`voice-capture ${voiceStage}`}>
@@ -186,17 +216,27 @@ export default function DashboardApp() {
         </div>
       </article>}
     </div>}
-    {slackStage!=='idle'&&<aside className="slack-panel" role="dialog" aria-label="Slack message draft">
-      <div className="slack-head"><div className="slack-badge"><Icon name="slack" size={16}/></div><div><h2>Slack message</h2><p>{slackStage==='ready'?'Drafted from this dashboard':'Reading the dashboard…'}</p></div><button aria-label="Close Slack message" onClick={()=>setSlackStage('idle')}><Icon name="close" size={16}/></button></div>
-      {slackStage==='generating'?<div className="slack-skeleton"><span/><span/><span/><span/></div>:<>
-        <div className="slack-channel"><span>Post to</span><b># competitive-intel</b></div>
-        <div className="slack-message"><div className="slack-avatar">DH</div><div className="slack-content">
-          <div className="slack-meta"><strong>Danica Hartawan</strong><time>{new Date().toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})}</time></div>
-          <p className="slack-title">{slack.title}</p><p>{slack.intro}</p>
-          <ul>{slack.lines.map(line=><li key={line.label}><b>{line.label}:</b> {line.value} <span>({line.note})</span></li>)}</ul>
-          <p>{slack.cta}</p>
-        </div></div>
-        <div className="slack-actions"><button className="ghost" onClick={draftSlack}><Icon name="refresh" size={14}/> Regenerate</button><button className="primary" onClick={copySlack}><Icon name={slackCopied?'check':'copy'} size={14}/> {slackCopied?'Copied':'Copy message'}</button></div>
+    {msg&&<aside className="slack-panel msg-panel" role="dialog" aria-label="New message">
+      <div className="slack-head"><div className="slack-badge"><Icon name="slack" size={16}/></div><div><h2>New message</h2><p>{msg.stage==='ready'?(msg.point===null?'Drafted from this dashboard':`Drafted from the ${mentionSeries[msg.point].label} point`):'Reading the dashboard…'}</p></div><button aria-label="Close message" onClick={()=>setMsg(null)}><Icon name="close" size={16}/></button></div>
+      {msg.stage==='generating'?<div className="slack-skeleton"><span/><span/><span/><span/></div>:<>
+        <div className="msg-subject"><label htmlFor="msg-subject">Subject</label><input id="msg-subject" value={msgSubject} onChange={e=>setMsgSubject(e.target.value)}/></div>
+        <div className="msg-grid">
+          <div className="msg-main">
+            <div className="msg-attach"><MiniChart point={msg.point}/><div><strong>Mentions over time</strong><span>{msg.point===null?'Sep 1 – Oct 20':`Pinned at ${mentionSeries[msg.point].label}`} · chart attached</span></div></div>
+            <textarea className="msg-body" value={msgBody} onChange={e=>setMsgBody(e.target.value)} aria-label="Message body" spellCheck={false}/>
+          </div>
+          <div className="genie">
+            <div className="genie-head"><Icon name="sparkle" size={15}/> Genie</div>
+            <p>{genieBusy?'Writing into your message…':'Ask me to reshape the message.'}</p>
+            <div className="genie-chips">
+              <button onClick={()=>askGenie('shorter')}>Make it shorter</button>
+              <button onClick={()=>askGenie('friendly')}>Friendlier tone</button>
+              <button onClick={()=>askGenie('next')}>Add next steps</button>
+            </div>
+            <div className="genie-input"><input value={genieText} placeholder="Tell Genie what to add…" onChange={e=>setGenieText(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')askGenie('custom',genieText)}} aria-label="Ask Genie"/><button aria-label="Send to Genie" onClick={()=>askGenie('custom',genieText)}><Icon name="send" size={14}/></button></div>
+          </div>
+        </div>
+        <div className="slack-actions"><button className="ghost" onClick={()=>openMessage(msg.point)}><Icon name="refresh" size={14}/> Regenerate</button><button className="primary" onClick={copyMessage}><Icon name={msgCopied?'check':'copy'} size={14}/> {msgCopied?'Copied':'Copy message'}</button></div>
       </>}
     </aside>}
     {agentToast&&<div className="agent-toast" role="status">Codex command copied</div>}

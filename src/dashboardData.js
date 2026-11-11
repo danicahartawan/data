@@ -105,3 +105,32 @@ export const slackMessageToMrkdwn = (message) => [
   '',
   message.cta,
 ].join('\n');
+
+export const buildMessageDraft = (activeCompanyIds, pointIndex = null) => {
+  const base = buildSlackMessage(activeCompanyIds);
+  const point = pointIndex === null ? null : mentionSeries[pointIndex];
+  const lines = [
+    base.intro,
+    '',
+    ...(point ? [`At ${point.label}: Databricks ${point.databricks.toLocaleString()} vs Snowflake ${point.snowflake.toLocaleString()} mentions`, ''] : []),
+    ...base.lines.map(line => `• ${line.label}: ${line.value} (${line.note})`),
+    '',
+    base.cta,
+  ];
+  return {
+    subject: point ? `Competitor momentum — ${point.label}` : 'Competitor momentum — weekly pulse',
+    body: lines.join('\n'),
+  };
+};
+
+export const genieRewrite = (body, action, text = '') => {
+  const lines = body.split('\n');
+  if (action === 'shorter') {
+    const kept = lines.filter(line => line.trim());
+    return [...kept.slice(0, 5), kept[kept.length - 1]].filter((line, i, all) => all.indexOf(line) === i).join('\n');
+  }
+  if (action === 'friendly') return ['Hey team 👋 quick pulse on competitor chatter:', ...lines.slice(1)].join('\n');
+  if (action === 'next') return `${body}\n\nNext steps:\n1. Review the leading sources behind the spike\n2. Draft the campaign brief\n3. Align in the next sync`;
+  const note = text.trim();
+  return note ? `${body}\n\n${note.charAt(0).toUpperCase()}${note.slice(1)}` : body;
+};

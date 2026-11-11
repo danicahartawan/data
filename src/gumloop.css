@@ -137,3 +137,25 @@ footer{grid-column:2;grid-row:2;border-top:1px solid var(--line);padding:16px 24
   .metric-row{grid-template-columns:1fr 1fr}
   .date-control{width:auto}
 }
+
+/* New message composer (comment point -> message with chart + Genie) */
+.msg-panel{width:min(760px,calc(100vw - 40px))}
+.msg-subject{display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--line)}
+.msg-subject label{width:56px;color:var(--muted);font-size:13px}
+.msg-subject input{flex:1;border:0;outline:0;background:transparent;font:inherit;font-size:15px;font-weight:500;color:var(--ink)}
+.msg-grid{display:grid;grid-template-columns:minmax(0,1fr) 220px}
+.msg-main{display:flex;flex-direction:column;gap:12px;padding:14px 16px}
+.msg-attach{display:flex;align-items:center;gap:12px;padding:8px;border:1px solid var(--line);border-radius:8px;background:#fafafa}
+.mini-chart{width:96px;height:40px;flex:none;border:1px solid var(--line);border-radius:6px;background:#fff}
+.msg-attach strong{display:block;font-size:13px;font-weight:500}.msg-attach span{color:var(--muted);font-size:12px}
+.msg-body{min-height:250px;resize:vertical;border:0;outline:0;background:transparent;font:inherit;font-size:14px;line-height:1.6;color:var(--ink)}
+.genie{display:flex;flex-direction:column;gap:10px;padding:14px;border-left:1px solid var(--line);background:#fafafa}
+.genie-head{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600}
+.genie p{margin:0;color:var(--muted);font-size:12px}
+.genie-chips{display:flex;flex-direction:column;gap:6px}
+.genie-chips button{border:1px solid var(--line);border-radius:8px;background:#fff;padding:7px 10px;text-align:left;font-size:12px;font-weight:500;color:var(--ink);cursor:pointer}
+.genie-chips button:hover{background:#f0f0f0}
+.genie-input{display:flex;align-items:center;gap:6px;margin-top:auto;border:1px solid var(--line);border-radius:8px;background:#fff;padding:4px 4px 4px 10px}
+.genie-input input{flex:1;min-width:0;border:0;outline:0;background:transparent;font:inherit;font-size:12px}
+.genie-input button{display:grid;place-items:center;width:26px;height:26px;border:0;border-radius:6px;background:var(--ink);color:#fff;cursor:pointer}
+@media(max-width:700px){.msg-grid{grid-template-columns:1fr}.genie{border-left:0;border-top:1px solid var(--line)}}
